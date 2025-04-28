@@ -1,151 +1,169 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import seaborn as sns
+import cvxpy as cp
+from scipy.spatial import ConvexHull
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+# Configure page
+st.set_page_config(page_title="Efficient Frontier Simulator", layout="wide")
+st.title('Efficient Frontier Simulator with Exact Optimization')
+
+# --- Dynamic Asset Classes ---
+asset_input = st.text_area(
+    "Enter asset classes separated by commas:",
+    value="Venture, Infrastructure, US Buyouts, SFR, CRE, Farmland",
+    help="Type asset names separated by commas, e.g. 'Stocks, Bonds, Gold'"
 )
+assets = [a.strip() for a in asset_input.split(',') if a.strip()]
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# --- Hardcoded Defaults ---
+default_returns = {'Venture':12.5,'Infrastructure':9.5,'US Buyouts':9.5,'SFR':8.1,'CRE':6.6,'Farmland':10.1}
+default_vols = {'Venture':18.0,'Infrastructure':11.0,'US Buyouts':14.0,'SFR':7.0,'CRE':11.0,'Farmland':9.0}
+default_max = {'Venture':15.0,'Infrastructure':15.0,'US Buyouts':100.0,'SFR':15.0,'CRE':50.0,'Farmland':15.0}
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# Hardcoded correlation defaults for known assets
+known_assets = ['Venture','Infrastructure','US Buyouts','SFR','CRE','Farmland']
+default_corr = pd.DataFrame([
+    [1.00,0.50,0.80,0.60,0.30,0.00],
+    [0.50,1.00,0.65,0.40,0.40,0.00],
+    [0.80,0.65,1.00,0.60,0.35,0.00],
+    [0.60,0.40,0.60,1.00,0.35,0.20],
+    [0.30,0.40,0.35,0.35,1.00,0.10],
+    [0.00,0.00,0.00,0.20,0.10,1.00]
+], index=known_assets, columns=known_assets)
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+# --- Asset Assumptions Inputs ---
+st.subheader("Asset Assumptions")
+returns,stds,max_weights=[],[],[]
+for asset in assets:
+    c1,c2,c3 = st.columns(3)
+    r = c1.number_input(f"{asset} Return (%):",-100.0,100.0,default_returns.get(asset,0.0),0.1,key=f"ret_{asset}")
+    v = c2.number_input(f"{asset} Volatility (%):",0.0,100.0,default_vols.get(asset,0.0),0.1,key=f"vol_{asset}")
+    m = c3.number_input(f"{asset} Max Weight (%):",0.0,100.0,default_max.get(asset,0.0),0.1,key=f"max_{asset}")
+    returns.append(r/100);stds.append(v/100);max_weights.append(m/100)
+returns=np.array(returns)
+stds=np.array(stds)
+max_weights=np.array(max_weights)
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
+# --- Correlation Matrix Inputs ---
+st.subheader("Correlation Matrix")
+# Build empty correlation DataFrame
+corr_df = pd.DataFrame(np.eye(len(assets)), index=assets, columns=assets)
+# Populate defaults
+for i, ai in enumerate(assets):
+    for j, aj in enumerate(assets):
+        if ai in known_assets and aj in known_assets:
+            corr_df.iat[i,j] = default_corr.loc[ai,aj]
+# Render matrix of inputs with labels
+st.write("Enter pairwise correlations (only lower triangle editable):")
+# Header row
+# define column widths: narrow first column, wider inputs
+col_widths = [1] * (len(assets) + 1)
+header_cols = st.columns(col_widths)
+# first header cell (Asset) centered, no grey box
+header_cols[0].markdown("<div style='text-align:center'><strong>Asset</strong></div>", unsafe_allow_html=True)
+# asset column headers centered
+for idx, asset in enumerate(assets):
+    header_cols[idx+1].markdown(f"<div style='text-align:center'><strong>{asset}</strong></div>", unsafe_allow_html=True)
+# Rows
+for i, ai in enumerate(assets):
+    row_cols = st.columns(col_widths)
+    # row label
+    row_cols[0].markdown(f"<div style='background-color:#f0f0f0; padding:0.5rem; border-radius:0.25rem; text-align:center'><strong>{ai}</strong></div>", unsafe_allow_html=True)
+    for j, aj in enumerate(assets):
+        if j < i:
+            default_val = corr_df.iat[i, j]
+            val = row_cols[j+1].number_input(
+                label="",
+                min_value=-1.0,
+                max_value=1.0,
+                value=float(default_val),
+                step=0.01,
+                key=f"corr_{i}_{j}"
+            )
+            corr_df.iat[i, j] = val
+            corr_df.iat[j, i] = val
+        elif j == i:
+            row_cols[j+1].number_input(label="", value=1.0, disabled=True, key=f"corr_{i}_{j}")
         else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+            row_cols[j+1].markdown("<div style='text-align:center'>&nbsp;</div>", unsafe_allow_html=True)
+# Covariance matrix
+cov = np.outer(stds, stds) * corr_df.values
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+# Correlation heatmap
+st.subheader("Correlation Heatmap")
+fig_hm, ax_hm = plt.subplots(figsize=(len(assets), len(assets)))
+sns.heatmap(corr_df, annot=True, fmt=".2f", cmap="RdYlGn", center=0, ax=ax_hm)
+st.pyplot(fig_hm)
+
+# --- Current Portfolio Input ---
+
+# Hardcoded default current weights (in %)
+default_current = {
+    'Venture': 10.0,
+    'Infrastructure': 10.0,
+    'US Buyouts': 40.0,
+    'SFR': 10.0,
+    'CRE': 30.0,
+    'Farmland': 0.0
+}
+
+st.subheader('Current Portfolio Weights')
+# Collect inputs, defaulting to provided values
+cw = np.array([
+    st.number_input(
+        f"{asset} Current Weight (%):",
+        min_value=0.0,
+        max_value=100.0,
+        value=default_current.get(asset, 0.0),
+        step=0.1,
+        key=f"cw_{asset}"
+    ) / 100
+    for asset in assets
+])
+# Validate sum to 100%
+sum_pct = cw.sum() * 100
+if abs(sum_pct - 100.0) > 1e-6:
+    st.error(f"Current weights sum to {sum_pct:.1f}%. Please ensure they total 100%.")
+    valid_current = False
+else:
+    valid_current = True
+    # normalize just in case of tiny floating error
+    cw = cw / cw.sum()
+# --- Exact Efficient Frontier via CVXPY ---
+st.subheader('Exact Efficient Frontier (CVXPY)')
+n=len(assets);mu=returns;Sigma=cov
+targets=np.linspace(mu.min(),mu.max(),50)
+vols,rets,wts=[],[],[]
+for t in targets:
+    w=cp.Variable(n)
+    prob=cp.Problem(cp.Minimize(cp.quad_form(w,Sigma)),[cp.sum(w)==1, mu@w>=t, w>=0, w<=max_weights])
+    prob.solve(solver=cp.ECOS)
+    if w.value is not None:
+        rets.append(float(mu@w.value));vols.append(float(np.sqrt(w.value.T@Sigma@w.value)));wts.append(w.value)
+
+# plot
+fig,ax=plt.subplots(figsize=(10,6))
+ax.plot(vols,rets,'-o',label='Efficient Frontier')
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1,decimals=1))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1,decimals=1))
+# max Sharpe
+sr=np.array(rets)/np.array(vols);ix=sr.argmax();bv,br=vols[ix],rets[ix]
+ax.scatter(bv,br,color='red',s=100,label='Max Sharpe');ax.annotate('Max Sharpe',(bv,br),textcoords='offset points',xytext=(0,10),ha='center',color='red')
+# current
+if valid_current:
+    ret0=float(mu@cw);vol0=float(np.sqrt(cw.T@Sigma@cw))
+    ax.scatter(vol0,ret0,color='blue',marker='X',s=100,label='Current Portfolio')
+    ax.annotate('Current',(vol0,ret0),textcoords='offset points',xytext=(0,-15),ha='center',color='blue')
+ax.set_xlabel('Volatility');ax.set_ylabel('Expected Return');ax.legend()
+st.pyplot(fig)
+
+# --- Export Efficient Frontier ---
+ef_df=pd.DataFrame(np.column_stack([vols,rets,np.array(wts)]),columns=['Volatility','Expected Return']+assets)
+ef_df['Volatility']=ef_df['Volatility'].apply(lambda x:f"{x:.2%}")
+ef_df['Expected Return']=ef_df['Expected Return'].apply(lambda x:f"{x:.2%}")
+csv=ef_df.to_csv(index=False).encode('utf-8')
+st.download_button('Download Efficient Frontier CSV',data=csv,file_name='efficient_frontier.csv',mime='text/csv')
