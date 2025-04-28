@@ -10,6 +10,42 @@ from scipy.spatial import ConvexHull
 st.set_page_config(page_title="Efficient Frontier Simulator", layout="wide")
 st.title('Efficient Frontier Simulator with Exact Optimization')
 
+# --- Slider Color Customization ---
+st.markdown(
+    """
+    <style>
+    /* Apply green accent to all native range sliders */
+    input[type="range"] {
+        accent-color: #28a745 !important;
+    }
+    /* For WebKit browsers */
+    input[type=range]::-webkit-slider-thumb {
+        background-color: #28a745 !important;
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+        background-color: #e0e0e0 !important;
+    }
+    /* For Firefox */
+    input[type=range]::-moz-range-thumb {
+        background: #28a745 !important;
+        border: none !important;
+    }
+    input[type=range]::-moz-range-track {
+        background: #e0e0e0 !important;
+    }
+    /* For Edge/IE */
+    input[type=range]::-ms-thumb {
+        background: #28a745 !important;
+        border: none !important;
+    }
+    input[type=range]::-ms-track {
+        background: #e0e0e0 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- Dynamic Asset Classes ---
 asset_input = st.text_area(
     "Enter asset classes separated by commas:",
@@ -40,12 +76,12 @@ returns, stds, max_weights = [], [], []
 for asset in assets:
     c1, c2, c3 = st.columns(3)
     r = c1.slider(
-        f"{asset} Return (%):", -100.0, 100.0,
+        f"{asset} Return (%):", 0.0, 50.0,
         default_returns.get(asset,0.0), step=0.25,
         key=f"ret_{asset}"
     )
     v = c2.slider(
-        f"{asset} Volatility (%):", 0.0, 100.0,
+        f"{asset} Volatility (%):", 0.0, 50.0,
         default_vols.get(asset,0.0), step=0.25,
         key=f"vol_{asset}"
     )
