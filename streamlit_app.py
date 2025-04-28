@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
-import seaborn as sns
+
 import cvxpy as cp
 from scipy.spatial import ConvexHull
 
@@ -95,8 +95,19 @@ cov = np.outer(stds, stds) * corr_df.values
 
 # Correlation heatmap
 st.subheader("Correlation Heatmap")
-fig_hm, ax_hm = plt.subplots(figsize=(len(assets), len(assets)))
-sns.heatmap(corr_df, annot=True, fmt=".2f", cmap="RdYlGn", center=0, ax=ax_hm)
+fig_hm, ax_hm = plt.subplots(figsize=(max(6, len(assets)), max(6, len(assets))))
+# Show as colored grid
+cax = ax_hm.imshow(corr_df.values, cmap="RdYlGn", vmin=-1, vmax=1)
+# Labels
+ax_hm.set_xticks(np.arange(len(assets)))
+ax_hm.set_yticks(np.arange(len(assets)))
+ax_hm.set_xticklabels(assets, rotation=45, ha='right')
+ax_hm.set_yticklabels(assets)
+# Annotate
+for i in range(len(assets)):
+    for j in range(len(assets)):
+        ax_hm.text(j, i, f"{corr_df.iat[i,j]:.2f}", ha='center', va='center', color='black')
+fig_hm.colorbar(cax, ax=ax_hm, shrink=0.8)
 st.pyplot(fig_hm)
 
 # --- Current Portfolio Input ---
