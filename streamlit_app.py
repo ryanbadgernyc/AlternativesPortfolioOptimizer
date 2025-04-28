@@ -161,16 +161,46 @@ st.pyplot(fig)
 
 # --- Portfolio Weights Change Table ---
 if valid_current:
+    # Compute optimal weights and portfolio metrics
     best_w = wts[ix]
-    df_change = pd.DataFrame({'Asset':assets,'Current':cw,'Optimal':best_w})
-    df_change['Change'] = df_change['Optimal'] - df_change['Current']
+    current_ret = float(mu @ cw)
+    current_vol = float(np.sqrt(cw.T @ Sigma @ cw))
+    optimal_ret = rets[ix]
+    optimal_vol = vols[ix]
+
+    # Build weight change table
+    df_change = pd.DataFrame({
+        'Asset': assets,
+        'Current Weight': cw,
+        'Optimal Weight': best_w,
+        'Weight Change': best_w - cw
+    })
+    # Apply formatting and coloring
     def color_change(val):
-        return 'color: green' if val>0 else ('color: red' if val<0 else '')
-    styled = df_change.style.format({'Current':'{:.2%}','Optimal':'{:.2%}','Change':'{:+.2%}'}) 
-    styled = styled.applymap(color_change, subset=['Change'])
+        return 'color: green' if val > 0 else ('color: red' if val < 0 else '')
+
+    styled = df_change.style.format({
+        'Current Weight': '{:.2%}',
+        'Optimal Weight': '{:.2%}',
+        'Weight Change': '{:+.2%}'
+    }).applymap(color_change, subset=['Weight Change'])
+
     st.subheader('Portfolio Weight Changes to Max Sharpe')
     st.dataframe(styled)
 
+        # Summary portfolio statistics
+    summary_df = pd.DataFrame({
+        'Metric': ['Expected Return', 'Volatility'],
+        'Current': [current_ret, current_vol],
+        'Optimal': [optimal_ret, optimal_vol],
+        'Change': [optimal_ret - current_ret, optimal_vol - current_vol]
+    })
+    # Format as percentages
+    summary_df['Current'] = summary_df['Current'].apply(lambda x: f"{x:.2%}")
+    summary_df['Optimal'] = summary_df['Optimal'].apply(lambda x: f"{x:.2%}")
+    summary_df['Change']  = summary_df['Change'].apply(lambda x: f"{x:+.2%}")
+    st.subheader('Portfolio Summary')
+    st.dataframe(summary_df)
 # --- Export Efficient Frontier ---
 ef_df = pd.DataFrame(np.column_stack([vols,rets,np.array(wts)]),columns=['Volatility','Expected Return']+assets)
 ef_df['Volatility'] = ef_df['Volatility'].apply(lambda x:f"{x:.2%}")
