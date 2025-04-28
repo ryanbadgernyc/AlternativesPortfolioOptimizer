@@ -14,33 +14,13 @@ st.title('Efficient Frontier Simulator with Exact Optimization')
 st.markdown(
     """
     <style>
-    /* Apply green accent to all native range sliders */
-    input[type="range"] {
-        accent-color: #28a745 !important;
-    }
-    /* For WebKit browsers */
-    input[type=range]::-webkit-slider-thumb {
-        background-color: #28a745 !important;
-    }
-    input[type=range]::-webkit-slider-runnable-track {
-        background-color: #e0e0e0 !important;
-    }
-    /* For Firefox */
-    input[type=range]::-moz-range-thumb {
-        background: #28a745 !important;
-        border: none !important;
-    }
-    input[type=range]::-moz-range-track {
-        background: #e0e0e0 !important;
-    }
-    /* For Edge/IE */
-    input[type=range]::-ms-thumb {
-        background: #28a745 !important;
-        border: none !important;
-    }
-    input[type=range]::-ms-track {
-        background: #e0e0e0 !important;
-    }
+    input[type="range"] { accent-color: #28a745 !important; }
+    input[type=range]::-webkit-slider-thumb { background-color: #28a745 !important; }
+    input[type=range]::-webkit-slider-runnable-track { background-color: #e0e0e0 !important; }
+    input[type=range]::-moz-range-thumb { background: #28a745 !important; border: none !important; }
+    input[type=range]::-moz-range-track { background: #e0e0e0 !important; }
+    input[type=range]::-ms-thumb { background: #28a745 !important; border: none !important; }
+    input[type=range]::-ms-track { background: #e0e0e0 !important; }
     </style>
     """,
     unsafe_allow_html=True
@@ -58,6 +38,13 @@ assets = [a.strip() for a in asset_input.split(',') if a.strip()]
 default_returns = {'Venture':12.5,'Infrastructure':9.5,'US Buyouts':9.5,'SFR':8.1,'CRE':6.6,'Farmland':10.1}
 default_vols    = {'Venture':18.0,'Infrastructure':11.0,'US Buyouts':14.0,'SFR':7.0,'CRE':11.0,'Farmland':9.0}
 default_max     = {'Venture':15.0,'Infrastructure':15.0,'US Buyouts':100.0,'SFR':15.0,'CRE':50.0,'Farmland':15.0}
+
+# --- Reset Assumptions Button ---
+if st.button("Reset Assumptions to Default"):
+    for asset in assets:
+        st.session_state[f"ret_{asset}"] = default_returns.get(asset, 0.0)
+        st.session_state[f"vol_{asset}"] = default_vols.get(asset, 0.0)
+        st.session_state[f"max_{asset}"] = default_max.get(asset, 0.0)
 
 # Correlation defaults
 known_assets = ['Venture','Infrastructure','US Buyouts','SFR','CRE','Farmland']
@@ -77,22 +64,22 @@ for asset in assets:
     c1, c2, c3 = st.columns(3)
     r = c1.slider(
         f"{asset} Return (%):", 0.0, 50.0,
-        default_returns.get(asset,0.0), step=0.25,
+        step=0.25,
         key=f"ret_{asset}"
     )
     v = c2.slider(
         f"{asset} Volatility (%):", 0.0, 50.0,
-        default_vols.get(asset,0.0), step=0.25,
+        step=0.25,
         key=f"vol_{asset}"
     )
     m = c3.slider(
         f"{asset} Max Weight (%):", 0.0, 100.0,
-        default_max.get(asset,0.0), step=0.1,
+        step=0.1,
         key=f"max_{asset}"
     )
-    returns.append(r/100)
-    stds.append(v/100)
-    max_weights.append(m/100)
+    returns.append(r / 100)
+    stds.append(v / 100)
+    max_weights.append(m / 100)
 returns = np.array(returns)
 stds    = np.array(stds)
 max_weights = np.array(max_weights)
@@ -103,27 +90,21 @@ corr_df = pd.DataFrame(np.eye(len(assets)), index=assets, columns=assets)
 for i, ai in enumerate(assets):
     for j, aj in enumerate(assets):
         if ai in known_assets and aj in known_assets:
-            corr_df.iat[i,j] = default_corr.loc[ai,aj]
-
+            corr_df.iat[i, j] = default_corr.loc[ai, aj]
 st.write("Enter pairwise correlations (only lower triangle editable):")
 col_widths = [1] * (len(assets) + 1)
 header_cols = st.columns(col_widths)
 header_cols[0].markdown("**Asset**")
-for idx, asset in enumerate(assets):
-    header_cols[idx+1].markdown(f"**{asset}**")
+for idx, asset in enumerate(assets): header_cols[idx+1].markdown(f"**{asset}**")
 for i, ai in enumerate(assets):
     row_cols = st.columns(col_widths)
     row_cols[0].markdown(f"**{ai}**")
     for j, aj in enumerate(assets):
         if j < i:
-            default_val = corr_df.iat[i,j]
-            val = row_cols[j+1].number_input(
-                label="", min_value=-1.0, max_value=1.0,
-                value=float(default_val), step=0.01,
-                key=f"corr_{i}_{j}"
-            )
-            corr_df.iat[i,j] = val
-            corr_df.iat[j,i] = val
+            default_val = corr_df.iat[i, j]
+            val = row_cols[j+1].number_input(label="", min_value=-1.0, max_value=1.0, value=float(default_val), step=0.01, key=f"corr_{i}_{j}")
+            corr_df.iat[i, j] = val
+            corr_df.iat[j, i] = val
         elif j == i:
             row_cols[j+1].number_input(label="", value=1.0, disabled=True, key=f"corr_{i}_{j}")
         else:
@@ -140,21 +121,15 @@ ax_hm.set_yticks(np.arange(len(assets)))
 ax_hm.set_xticklabels(assets, rotation=45, ha='right')
 ax_hm.set_yticklabels(assets)
 for i in range(len(assets)):
-    for j in range(len(assets)):
-        ax_hm.text(j, i, f"{corr_df.iat[i,j]:.2f}", ha='center', va='center')
+    for j in range(len(assets)): ax_hm.text(j, i, f"{corr_df.iat[i,j]:.2f}", ha='center', va='center')
 fig_hm.colorbar(cax, ax=ax_hm, shrink=0.8)
 st.pyplot(fig_hm)
 
 # --- Current Portfolio Input ---
 st.subheader('Current Portfolio Weights')
 default_current = {'Venture':10.0,'Infrastructure':10.0,'US Buyouts':40.0,'SFR':10.0,'CRE':30.0,'Farmland':0.0}
-
 cw = np.array([
-    st.number_input(
-        f"{asset} Current Weight (%):",0.0,100.0,
-        default_current.get(asset,0.0),step=0.1,
-        key=f"cw_{asset}"
-    )/100
+    st.number_input(f"{asset} Current Weight (%):",0.0,100.0, default_current.get(asset,0.0),step=0.1,key=f"cw_{asset}")/100
     for asset in assets
 ])
 sum_pct = cw.sum()*100
@@ -172,74 +147,50 @@ targets = np.linspace(mu.min(), mu.max(), 50)
 vols, rets, wts = [], [], []
 for t in targets:
     w = cp.Variable(n)
-    prob = cp.Problem(cp.Minimize(cp.quad_form(w, Sigma)),
-                      [cp.sum(w)==1, mu@w>=t, w>=0, w<=max_weights])
+    prob = cp.Problem(cp.Minimize(cp.quad_form(w, Sigma)), [cp.sum(w)==1, mu@w>=t, w>=0, w<=max_weights])
     prob.solve(solver=cp.ECOS)
     if w.value is not None:
         rets.append(float(mu@w.value))
         vols.append(float(np.sqrt(w.value.T@Sigma@w.value)))
         wts.append(w.value)
-
-fig, ax = plt.subplots(figsize=(10,6))
+# Check feasibility
+if len(vols) == 0:
+    st.error("No feasible portfolios found. Please adjust your max weight or correlation constraints.")
+else:
+    fig, ax = plt.subplots(figsize=(10,6))
 ax.plot(vols, rets, '-o', label='Efficient Frontier')
-ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1,decimals=1))
-ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1,decimals=1))
-sr = np.array(rets)/np.array(vols)
-ix = sr.argmax();bv,br = vols[ix], rets[ix]
-ax.scatter(bv,br,color='red',s=100,label='Max Sharpe')
-ax.annotate('Max Sharpe',(bv,br),textcoords='offset points',xytext=(0,10),ha='center',color='red')
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1,decimals=1)); ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1,decimals=1))
+sr = np.array(rets)/np.array(vols); ix = sr.argmax(); bv,br = vols[ix], rets[ix]
+ax.scatter(bv,br,color='red',s=100,label='Max Sharpe'); ax.annotate('Max Sharpe',(bv,br),textcoords='offset points',xytext=(0,10),ha='center',color='red')
 if valid_current:
-    ret0, vol0 = float(mu@cw), float(np.sqrt(cw.T@Sigma@cw))
-    ax.scatter(vol0,ret0,color='blue',marker='X',s=100,label='Current')
-    ax.annotate('Current',(vol0,ret0),textcoords='offset points',xytext=(0,-15),ha='center',color='blue')
-ax.set_xlabel('Volatility');ax.set_ylabel('Expected Return');ax.legend()
-st.pyplot(fig)
-
-# --- Portfolio Weights Change Table ---
-if valid_current:
-    # Compute optimal weights and portfolio metrics
     best_w = wts[ix]
+    # Compute current and optimal portfolio metrics
     current_ret = float(mu @ cw)
     current_vol = float(np.sqrt(cw.T @ Sigma @ cw))
     optimal_ret = rets[ix]
     optimal_vol = vols[ix]
 
-    # Build weight change table
-    df_change = pd.DataFrame({
-        'Asset': assets,
-        'Current Weight': cw,
-        'Optimal Weight': best_w,
-        'Weight Change': best_w - cw
-    })
-    # Apply formatting and coloring
-    def color_change(val):
-        return 'color: green' if val > 0 else ('color: red' if val < 0 else '')
-
-    styled = df_change.style.format({
-        'Current Weight': '{:.2%}',
-        'Optimal Weight': '{:.2%}',
-        'Weight Change': '{:+.2%}'
-    }).applymap(color_change, subset=['Weight Change'])
-
+    df_change = pd.DataFrame({'Asset':assets,'Current Weight':cw,'Optimal Weight':best_w,'Weight Change':best_w-cw})
+    def color_change(val): return 'color: green' if val>0 else ('color: red' if val<0 else '')
+    styled = df_change.style.format({'Current Weight':'{:.2%}','Optimal Weight':'{:.2%}','Weight Change':'{:+.2%}'}).applymap(color_change, subset=['Weight Change'])
     st.subheader('Portfolio Weight Changes to Max Sharpe')
     st.dataframe(styled)
 
-        # Summary portfolio statistics
+    # Summary table of portfolio stats
     summary_df = pd.DataFrame({
         'Metric': ['Expected Return', 'Volatility'],
         'Current': [current_ret, current_vol],
         'Optimal': [optimal_ret, optimal_vol],
-        'Change': [optimal_ret - current_ret, optimal_vol - current_vol]
+        'Change': [optimal_ret-current_ret, optimal_vol-current_vol]
     })
-    # Format as percentages
     summary_df['Current'] = summary_df['Current'].apply(lambda x: f"{x:.2%}")
     summary_df['Optimal'] = summary_df['Optimal'].apply(lambda x: f"{x:.2%}")
-    summary_df['Change']  = summary_df['Change'].apply(lambda x: f"{x:+.2%}")
+    summary_df['Change'] = summary_df['Change'].apply(lambda x: f"{x:+.2%}")
     st.subheader('Portfolio Summary')
     st.dataframe(summary_df)
+
 # --- Export Efficient Frontier ---
 ef_df = pd.DataFrame(np.column_stack([vols,rets,np.array(wts)]),columns=['Volatility','Expected Return']+assets)
-ef_df['Volatility'] = ef_df['Volatility'].apply(lambda x:f"{x:.2%}")
-ef_df['Expected Return']=ef_df['Expected Return'].apply(lambda x:f"{x:.2%}")
+ef_df['Volatility']=ef_df['Volatility'].apply(lambda x:f"{x:.2%}"); ef_df['Expected Return']=ef_df['Expected Return'].apply(lambda x:f"{x:.2%}")
 csv = ef_df.to_csv(index=False).encode('utf-8')
 st.download_button('Download Efficient Frontier CSV',data=csv,file_name='efficient_frontier.csv',mime='text/csv')
