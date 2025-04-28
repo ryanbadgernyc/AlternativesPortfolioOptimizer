@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
-
 import cvxpy as cp
 from scipy.spatial import ConvexHull
 
@@ -37,16 +36,42 @@ default_corr = pd.DataFrame([
 
 # --- Asset Assumptions Inputs ---
 st.subheader("Asset Assumptions")
-returns,stds,max_weights=[],[],[]
+returns, stds, max_weights = [], [], []
 for asset in assets:
-    c1,c2,c3 = st.columns(3)
-    r = c1.number_input(f"{asset} Return (%):",-100.0,100.0,default_returns.get(asset,0.0),0.1,key=f"ret_{asset}")
-    v = c2.number_input(f"{asset} Volatility (%):",0.0,100.0,default_vols.get(asset,0.0),0.1,key=f"vol_{asset}")
-    m = c3.number_input(f"{asset} Max Weight (%):",0.0,100.0,default_max.get(asset,0.0),0.1,key=f"max_{asset}")
-    returns.append(r/100);stds.append(v/100);max_weights.append(m/100)
-returns=np.array(returns)
-stds=np.array(stds)
-max_weights=np.array(max_weights)
+    c1, c2, c3 = st.columns(3)
+    # Return slider
+    r = c1.slider(
+        f"{asset} Return (%):",
+        min_value=-100.0,
+        max_value=100.0,
+        value=default_returns.get(asset, 0.0),
+        step=0.25,
+        key=f"ret_{asset}"
+    )
+    # Volatility slider
+    v = c2.slider(
+        f"{asset} Volatility (%):",
+        min_value=0.0,
+        max_value=100.0,
+        value=default_vols.get(asset, 0.0),
+        step=0.25,
+        key=f"vol_{asset}"
+    )
+    # Max weight slider
+    m = c3.slider(
+        f"{asset} Max Weight (%):",
+        min_value=0.0,
+        max_value=100.0,
+        value=default_max.get(asset, 0.0),
+        step=0.1,
+        key=f"max_{asset}"
+    )
+    returns.append(r / 100)
+    stds.append(v / 100)
+    max_weights.append(m / 100)
+returns = np.array(returns)
+stds = np.array(stds)
+max_weights = np.array(max_weights)
 
 # --- Correlation Matrix Inputs ---
 st.subheader("Correlation Matrix")
@@ -56,23 +81,23 @@ corr_df = pd.DataFrame(np.eye(len(assets)), index=assets, columns=assets)
 for i, ai in enumerate(assets):
     for j, aj in enumerate(assets):
         if ai in known_assets and aj in known_assets:
-            corr_df.iat[i,j] = default_corr.loc[ai,aj]
+            corr_df.iat[i, j] = default_corr.loc[ai, aj]
 # Render matrix of inputs with labels
 st.write("Enter pairwise correlations (only lower triangle editable):")
-# Header row
-# define column widths: narrow first column, wider inputs
 col_widths = [1] * (len(assets) + 1)
 header_cols = st.columns(col_widths)
-# first header cell (Asset) centered, no grey box
 header_cols[0].markdown("<div style='text-align:center'><strong>Asset</strong></div>", unsafe_allow_html=True)
-# asset column headers centered
 for idx, asset in enumerate(assets):
-    header_cols[idx+1].markdown(f"<div style='text-align:center'><strong>{asset}</strong></div>", unsafe_allow_html=True)
-# Rows
+    header_cols[idx+1].markdown(
+        f"<div style='text-align:center'><strong>{asset}</strong></div>",
+        unsafe_allow_html=True
+    )
 for i, ai in enumerate(assets):
     row_cols = st.columns(col_widths)
-    # row label
-    row_cols[0].markdown(f"<div style='background-color:#f0f0f0; padding:0.5rem; border-radius:0.25rem; text-align:center'><strong>{ai}</strong></div>", unsafe_allow_html=True)
+    row_cols[0].markdown(
+        f"<div style='background-color:#f0f0f0; padding:0.5rem; border-radius:0.25rem; text-align:center'><strong>{ai}</strong></div>",
+        unsafe_allow_html=True
+    )
     for j, aj in enumerate(assets):
         if j < i:
             default_val = corr_df.iat[i, j]
@@ -90,23 +115,19 @@ for i, ai in enumerate(assets):
             row_cols[j+1].number_input(label="", value=1.0, disabled=True, key=f"corr_{i}_{j}")
         else:
             row_cols[j+1].markdown("<div style='text-align:center'>&nbsp;</div>", unsafe_allow_html=True)
-# Covariance matrix
 cov = np.outer(stds, stds) * corr_df.values
 
-# Correlation heatmap
+# --- Correlation Heatmap ---
 st.subheader("Correlation Heatmap")
 fig_hm, ax_hm = plt.subplots(figsize=(max(6, len(assets)), max(6, len(assets))))
-# Show as colored grid
 cax = ax_hm.imshow(corr_df.values, cmap="RdYlGn", vmin=-1, vmax=1)
-# Labels
 ax_hm.set_xticks(np.arange(len(assets)))
 ax_hm.set_yticks(np.arange(len(assets)))
 ax_hm.set_xticklabels(assets, rotation=45, ha='right')
 ax_hm.set_yticklabels(assets)
-# Annotate
 for i in range(len(assets)):
     for j in range(len(assets)):
-        ax_hm.text(j, i, f"{corr_df.iat[i,j]:.2f}", ha='center', va='center', color='black')
+        ax_hm.text(j, i, f"{corr_df.iat[i,j]:.2f}", ha='center', va='center')
 fig_hm.colorbar(cax, ax=ax_hm, shrink=0.8)
 st.pyplot(fig_hm)
 
@@ -123,7 +144,6 @@ default_current = {
 }
 
 st.subheader('Current Portfolio Weights')
-# Collect inputs, defaulting to provided values
 cw = np.array([
     st.number_input(
         f"{asset} Current Weight (%):",
@@ -135,46 +155,59 @@ cw = np.array([
     ) / 100
     for asset in assets
 ])
-# Validate sum to 100%
 sum_pct = cw.sum() * 100
 if abs(sum_pct - 100.0) > 1e-6:
     st.error(f"Current weights sum to {sum_pct:.1f}%. Please ensure they total 100%.")
     valid_current = False
 else:
     valid_current = True
-    # normalize just in case of tiny floating error
     cw = cw / cw.sum()
+
 # --- Exact Efficient Frontier via CVXPY ---
 st.subheader('Exact Efficient Frontier (CVXPY)')
-n=len(assets);mu=returns;Sigma=cov
-targets=np.linspace(mu.min(),mu.max(),50)
-vols,rets,wts=[],[],[]
+n = len(assets)
+mu = returns
+Sigma = cov
+targets = np.linspace(mu.min(), mu.max(), 50)
+vols, rets, wts = [], [], []
 for t in targets:
-    w=cp.Variable(n)
-    prob=cp.Problem(cp.Minimize(cp.quad_form(w,Sigma)),[cp.sum(w)==1, mu@w>=t, w>=0, w<=max_weights])
+    w = cp.Variable(n)
+    prob = cp.Problem(
+        cp.Minimize(cp.quad_form(w, Sigma)),
+        [cp.sum(w) == 1,
+         mu @ w >= t,
+         w >= 0,
+         w <= max_weights]
+    )
     prob.solve(solver=cp.ECOS)
     if w.value is not None:
-        rets.append(float(mu@w.value));vols.append(float(np.sqrt(w.value.T@Sigma@w.value)));wts.append(w.value)
+        rets.append(float(mu @ w.value))
+        vols.append(float(np.sqrt(w.value.T @ Sigma @ w.value)))
+        wts.append(w.value)
 
 # plot
-fig,ax=plt.subplots(figsize=(10,6))
-ax.plot(vols,rets,'-o',label='Efficient Frontier')
-ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1,decimals=1))
-ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1,decimals=1))
-# max Sharpe
-sr=np.array(rets)/np.array(vols);ix=sr.argmax();bv,br=vols[ix],rets[ix]
-ax.scatter(bv,br,color='red',s=100,label='Max Sharpe');ax.annotate('Max Sharpe',(bv,br),textcoords='offset points',xytext=(0,10),ha='center',color='red')
-# current
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(vols, rets, '-o', label='Efficient Frontier')
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=1))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=1))
+sr = np.array(rets) / np.array(vols)
+ix = sr.argmax()
+bv, br = vols[ix], rets[ix]
+ax.scatter(bv, br, color='red', s=100, label='Max Sharpe')
+ax.annotate('Max Sharpe', (bv, br), textcoords='offset points', xytext=(0, 10), ha='center', color='red')
 if valid_current:
-    ret0=float(mu@cw);vol0=float(np.sqrt(cw.T@Sigma@cw))
-    ax.scatter(vol0,ret0,color='blue',marker='X',s=100,label='Current Portfolio')
-    ax.annotate('Current',(vol0,ret0),textcoords='offset points',xytext=(0,-15),ha='center',color='blue')
-ax.set_xlabel('Volatility');ax.set_ylabel('Expected Return');ax.legend()
+    ret0 = float(mu @ cw)
+    vol0 = float(np.sqrt(cw.T @ Sigma @ cw))
+    ax.scatter(vol0, ret0, color='blue', marker='X', s=100, label='Current Portfolio')
+    ax.annotate('Current', (vol0, ret0), textcoords='offset points', xytext=(0, -15), ha='center', color='blue')
+ax.set_xlabel('Volatility')
+ax.set_ylabel('Expected Return')
+ax.legend()
 st.pyplot(fig)
 
 # --- Export Efficient Frontier ---
-ef_df=pd.DataFrame(np.column_stack([vols,rets,np.array(wts)]),columns=['Volatility','Expected Return']+assets)
-ef_df['Volatility']=ef_df['Volatility'].apply(lambda x:f"{x:.2%}")
-ef_df['Expected Return']=ef_df['Expected Return'].apply(lambda x:f"{x:.2%}")
-csv=ef_df.to_csv(index=False).encode('utf-8')
-st.download_button('Download Efficient Frontier CSV',data=csv,file_name='efficient_frontier.csv',mime='text/csv')
+ef_df = pd.DataFrame(np.column_stack([vols, rets, np.array(wts)]), columns=['Volatility','Expected Return']+assets)
+ef_df['Volatility'] = ef_df['Volatility'].apply(lambda x: f"{x:.2%}")
+ef_df['Expected Return'] = ef_df['Expected Return'].apply(lambda x: f"{x:.2%}")
+csv = ef_df.to_csv(index=False).encode('utf-8')
+st.download_button('Download Efficient Frontier CSV', data=csv, file_name='efficient_frontier.csv', mime='text/csv')
